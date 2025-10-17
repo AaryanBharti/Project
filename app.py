@@ -11,7 +11,8 @@ def load_lottie_file(filepath: str):
     with open(filepath, "r") as f:
         return json.load(f)
 
-lottie_animation = load_lottie_file("C:/Users/chvai/Desktop/usar final project/Animation - 1729896198439.json")
+lottie_animation = load_lottie_file("assets/Animation-1729896198439.json")
+
 
 # Database connection
 conn = sqlite3.connect('green_invest.db')
