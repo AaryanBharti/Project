@@ -1,0 +1,6 @@
+streamlit
+streamlit-lottie
+pandas
+matplotlib
+sqlite3-binary
+jsonschema
