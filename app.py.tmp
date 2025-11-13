@@ -1,0 +1,476 @@
+from pydoc import pager
+import streamlit as st
+import sqlite3
+import json
+import requests
+from streamlit_lottie import st_lottie
+import os
+import threading
+from flask import Flask, request as flask_request, jsonify
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Load Lottie animation
+def load_lottie_from_url(url: str):
+    try:
+        response = requests.get(url)
+        return response.json()
+    except Exception as e:
+        st.error(f"Error loading animation: {str(e)}")
+        return None
+
+# Using a sample animation URL for green energy theme
+lottie_animation = load_lottie_from_url("https://assets3.lottiefiles.com/packages/lf20_qm8eqzse.json")
+
+# Database connection
+conn = sqlite3.connect("green_invest.db")
+cursor = conn.cursor()
+
+# Create users table if it does not exist
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    invested_amount REAL DEFAULT 0,
+    energy_produced REAL DEFAULT 0,
+    co_saved REAL DEFAULT 0
+)
+""")
+
+# Commit changes and close connection
+conn.commit()
+
+# User functions
+def create_user(username, password):
+    try:
+        cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
+def check_credentials(username, password):
+    cursor.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, password))
+    return cursor.fetchone()
+
+# Streamlit app layout
+st.set_page_config(page_title="Green Invest", layout="wide")
+
+# CSS for styling
+st.markdown("""
+    <style>
+    .main-title {
+        text-align: center;
+        font-size: 36px;
+        color: #4CAF50; /* Green color */
+    }
+    .stButton > button {
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+    }
+    .stButton > button:hover {
+        background-color: #45a049;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# Display app title with stylish header
+st.markdown("""
+    <h1 style='text-align: center; color: #4CAF50; margin: 2rem 0; padding: 1rem; border-bottom: 2px solid #4CAF50;'>
+        🌿 Welcome to Green Invest
+    </h1>
+""", unsafe_allow_html=True)
+
+# Login or Signup Form Selection
+auth_mode = st.sidebar.selectbox("Select Mode", ["Login", "Sign Up"])
+
+# Sign Up Form
+if auth_mode == "Sign Up" and "logged_in" not in st.session_state:
+    st.markdown("<h1 class='main-title'>Sign Up for Green Invest</h1>", unsafe_allow_html=True)
+    with st.form("signup_form"):
+        st.write("Create a new account.")
+        new_username = st.text_input("Username")
+        new_password = st.text_input("Password", type="password")
+        signup_button = st.form_submit_button("Sign Up")
+    
+    if signup_button:
+        if create_user(new_username, new_password):
+            st.success("Account created successfully! Please log in.")
+        else:
+            st.error("Username already exists. Please choose a different one.")
+
+# Login Form
+elif auth_mode == "Login" and "logged_in" not in st.session_state:
+    st.markdown("<h1 class='main-title'>Login to Green Invest</h1>", unsafe_allow_html=True)
+    with st.form("login_form"):
+        st.write("Please enter your login details.")
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        login_button = st.form_submit_button("Login")
+    
+    # Verify login
+    if login_button:
+        user = check_credentials(username, password)
+        if user:
+            st.session_state.logged_in = True
+            st.session_state.user_id = user[0]  # Store user ID for session
+            st.success("Login successful!")
+            st.rerun()  # Using st.rerun() instead of st.experimental_rerun()
+        else:
+            st.error("Invalid username or password.")
+
+# Main Content after Login
+if "logged_in" in st.session_state and st.session_state.logged_in:
+    st.markdown("<h1 class='main-title'>Green Invest</h1>", unsafe_allow_html=True)
+    
+    # Sidebar Navigation
+    page = st.sidebar.selectbox("Navigation", ["Explore Investment Opportunities", "User Profile", "Logout"])
+    
+    # Sample dummy companies data
+    dummy_companies = [
+        {
+            "name": "SolarTech Innovations",
+            "description": "Leading the way in solar technology and sustainable energy solutions.",
+            "target_funding": 1000000,
+            "energy_output": 50000,
+            "image": "company1.jpg"
+        },
+        {
+            "name": "Green Energy Solutions",
+            "description": "Committed to providing renewable energy solutions for a sustainable future.",
+            "target_funding": 500000,
+            "energy_output": 30000,
+            "image": "company2.jpg"
+        },
+        {
+            "name": "EcoPower Inc.",
+            "description": "Harnessing the power of the sun to provide clean energy.",
+            "target_funding": 750000,
+            "energy_output": 45000,
+            "image": "company3.jpg"
+        },
+    ]
+    
+    # Page 1: Explore Investment Opportunities
+    if page == "Explore Investment Opportunities":
+        st.header("Explore Investment Opportunities")
+        st.write("Browse available solar energy projects to make sustainable investments.")
+        
+        for company in dummy_companies:
+            st.write(f"### {company['name']}")  # Company Name
+            st.write(f"{company['description']}")  # Description
+            st.write(f"**Target Funding:** ${company['target_funding']:,.2f}")
+            st.write(f"**Energy Output:** {company['energy_output']:,.2f} kWh")
+            
+            # Invest button
+            if st.button(f"Invest in {company['name']}"):
+                st.write(f"### Investment Details for {company['name']}")
+                st.write(f"**Description:** {company['description']}")
+                st.write(f"**Target Funding:** ${company['target_funding']:,.2f}")
+                st.write(f"**Energy Output:** {company['energy_output']:,.2f} kWh")
+                st.write("Thank you for your interest in investing!")
+            st.markdown("---")
+        
+        if lottie_animation:
+            st_lottie(lottie_animation, speed=1, height=50, width=300, key="animation")
+
+    # Page 2: User Profile
+    elif page == "User Profile":
+        st.header("Your Profile & Credit Calculator")
+        
+        cursor.execute("SELECT username, invested_amount, energy_produced, co_saved FROM users WHERE id = ?", (st.session_state.user_id,))
+        r = cursor.fetchone()
+        if r:
+            username, invested, energy, co = r
+            st.subheader(username)
+            cols = st.columns(4)
+            cols[0].metric("Invested", f"${invested:,.2f}")
+            cols[1].metric("Energy Produced", f"{energy:,.2f} kWh")
+            cols[2].metric("CO2 Saved", f"{co:,.2f} tons")
+            cols[3].markdown("&nbsp;")
+        
+        st.markdown("---")
+        st.subheader("Credit Projection Calculator")
+        
+        user_share = st.slider("Your share (%)", 0.0, 100.0, 10.0) / 100.0
+        initial_credits = st.number_input("Initial Company Credits", value=1000000, step=1000)
+        manuf_months = st.number_input("Manufacturing months", min_value=0, value=6)
+        growth_rate = st.slider("Monthly growth rate (%) after manufacturing", 0.0, 20.0, 2.0) / 100.0
+        
+        # Calculate Credits
+        class CreditCalculator:
+            def __init__(self, initial, share, manuf, growth):
+                self.initial = float(initial)
+                self.share = float(share)
+                self.manuf = int(manuf)
+                self.growth = float(growth)
+                
+            def run(self):
+                rows = []
+                credits = self.initial
+                decline = 0.05
+                for m in range(1, self.manuf + 1):
+                    credits = credits * (1 - decline)
+                    rows.append((f"Month {m}", credits, credits * self.share))
+                for m in range(1, 13):
+                    credits = credits * (1 + self.growth)
+                    rows.append((f"Month {self.manuf + m}", credits, credits * self.share))
+                return pd.DataFrame(rows, columns=["Time Period", "Company Credits", "Your Share Credits"])
+        
+        if st.button("Calculate Projection"):
+            calc = CreditCalculator(initial_credits, user_share, manuf_months, growth_rate)
+            df = calc.run()
+            st.line_chart(df.set_index("Time Period")["Your Share Credits"])
+            st.dataframe(df)
+    
+    # Logout
+    elif page == "Logout":
+        st.session_state.logged_in = False
+        st.session_state.user_id = None
+        st.success("You have logged out successfully. Please log in again.")
+        st.rerun()  # Using st.rerun() here as well
+
+# Embed new AI chatbot widget
+import streamlit.components.v1 as components
+import os
+
+def load_file_content(filepath):
+    try:
+        with open(filepath, "r", encoding='utf-8') as f:
+            return f.read()
+    except Exception as e:
+        print(f"Error loading {filepath}: {str(e)}")
+        return ""
+
+# Get the directory containing app.py
+current_dir = os.path.dirname(os.path.abspath(__file__))
+assets_dir = os.path.join(current_dir, "assets")
+
+# Load CSS and JS content
+css_content = load_file_content(os.path.join(assets_dir, "style.css"))
+js_content = load_file_content(os.path.join(assets_dir, "script.js"))
+
+# Create HTML content
+html_content = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Assistant</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
+    <style>
+        {css_content}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="app-header">
+            <h1 class="heading">Hello, there</h1>
+            <h4 class="sub-heading">How can I help you today?</h4>
+        </header>
+        <ul class="suggestions">
+            <li class="suggestions-item">
+                <p class="text">Tell me more about green energy investments.</p>
+                <span class="icon material-symbols-rounded">eco</span>
+            </li>
+            <li class="suggestions-item">
+                <p class="text">What are the latest solar technology trends?</p>
+                <span class="icon material-symbols-rounded">solar_power</span>
+            </li>
+            <li class="suggestions-item">
+                <p class="text">Calculate potential returns on green investments.</p>
+                <span class="icon material-symbols-rounded">calculate</span>
+            </li>
+            <li class="suggestions-item">
+                <p class="text">Explain carbon credits and their impact.</p>
+                <span class="icon material-symbols-rounded">nature</span>
+            </li>
+        </ul>
+        <div class="chats-container"></div>
+        <div class="prompt-container">
+            <div class="prompt-wrapper">
+                <form action="#" class="prompt-form">
+                    <input type="text" placeholder="Ask me anything..." class="prompt-input" required />
+                    <div class="prompt-actions">
+                        <div class="file-upload-wrapper">
+                            <img src="#" class="file-preview" />
+                            <input id="file-input" type="file" accept="image/*, .pdf, .txt, .csv" hidden />
+                            <button type="button" class="file-icon material-symbols-rounded">description</button>
+                            <button id="cancel-file-btn" type="button" class="material-symbols-rounded">close</button>
+                            <button id="add-file-btn" type="button" class="material-symbols-rounded">attach_file</button>
+                        </div>
+                        <button id="stop-response-btn" type="button" class="material-symbols-rounded">stop_circle</button>
+                        <button id="send-prompt-btn" class="material-symbols-rounded">arrow_upward</button>
+                    </div>
+                </form>
+                <button id="theme-toggle-btn" class="material-symbols-rounded">light_mode</button>
+                <button id="delete-chats-btn" class="material-symbols-rounded">delete</button>
+            </div>
+            <p class="disclaimer-text">AI responses may not be perfect. Please verify important information.</p>
+        </div>
+    </div>
+    <script>
+        window.addEventListener('error', function(event) {{
+            alert('Error: ' + event.message);
+        }});
+    </script>
+    <script>{js_content}</script>
+</body>
+</html>'''
+
+# Render the HTML content
+components.html(
+    html_content,
+    height=800,  # Increased height to accommodate the full interface
+    width=None   # Full width
+)
+
+# Close the database connection when the app ends
+conn.close()
+
+# --- Small local API server to forward messages to an LLM provider (OpenAI compatible)
+# Starts only if OPENAI_API_KEY is set. Falls back to client-side simulated replies when missing.
+def start_local_api_server():
+    api_key = os.environ.get('OPENAI_API_KEY')
+    model = os.environ.get('OPENAI_MODEL', 'gpt-4o-mini')
+    app = Flask(__name__)
+
+    # NOTE: removed /api/gemini and OpenAI forwarding - this app now uses free research only
+
+    @app.route('/api/research', methods=['POST'])
+    def research_api():
+        """Enhanced web search functionality similar to Google Gemini.
+        Aggregates results from multiple sources and provides comprehensive answers.
+        """
+        data = flask_request.get_json(force=True)
+        q = (data or {}).get('query', '')
+        if not q:
+            return jsonify({'error': 'empty_query'}), 400
+
+        results = {'query': q, 'sources': []}
+
+        # DuckDuckGo Instant Answer API
+        try:
+            ddg = requests.get('https://api.duckduckgo.com/', params={
+                'q': q,
+                'format': 'json',
+                'no_html': 1,
+                'skip_disambig': 1
+            }, timeout=8)
+            if ddg.ok:
+                jd = ddg.json()
+                # Get main abstract
+                abstract = jd.get('AbstractText', '')
+                if abstract:
+                    results['sources'].append({
+                        'source': 'DuckDuckGo',
+                        'type': 'main',
+                        'text': abstract,
+                        'url': jd.get('AbstractURL'),
+                        'title': jd.get('Heading', '')
+                    })
+                # Get related topics
+                if jd.get('RelatedTopics'):
+                    for topic in jd.get('RelatedTopics')[:3]:
+                        if isinstance(topic, dict) and topic.get('Text'):
+                            results['sources'].append({
+                                'source': 'DuckDuckGo',
+                                'type': 'related',
+                                'text': topic.get('Text'),
+                                'url': topic.get('FirstURL'),
+                                'title': 'Related Topic'
+                            })
+        except Exception as e:
+            print(f"DuckDuckGo API error: {str(e)}")
+
+        # Wikipedia API with enhanced search
+        try:
+            # Search Wikipedia
+            s = requests.get('https://en.wikipedia.org/w/api.php', params={
+                'action': 'query',
+                'list': 'search',
+                'srsearch': q,
+                'format': 'json',
+                'srlimit': 3
+            }, timeout=6)
+            
+            if s.ok:
+                search_data = s.json()
+                search_results = search_data.get('query', {}).get('search', [])
+                
+                for result in search_results:
+                    title = result.get('title')
+                    if title:
+                        # Get detailed page info
+                        ps = requests.get(f'https://en.wikipedia.org/api/rest_v1/page/summary/{requests.utils.requote_uri(title)}', timeout=6)
+                        if ps.ok:
+                            page_data = ps.json()
+                            results['sources'].append({
+                                'source': 'Wikipedia',
+                                'type': 'article',
+                                'text': page_data.get('extract', ''),
+                                'url': page_data.get('content_urls', {}).get('desktop', {}).get('page'),
+                                'title': title,
+                                'thumbnail': page_data.get('thumbnail', {}).get('source')
+                            })
+        except Exception as e:
+            print(f"Wikipedia API error: {str(e)}")
+
+        # Build comprehensive response
+        response = {
+            'query': q,
+            'sources': results['sources'],
+            'summary': '',
+            'suggestions': []
+        }
+
+        # Create main summary
+        summary_parts = []
+        main_sources = [s for s in results['sources'] if s['type'] == 'main']
+        if main_sources:
+            summary_parts.append(main_sources[0]['text'])
+        
+        article_sources = [s for s in results['sources'] if s['type'] == 'article']
+        for source in article_sources[:2]:
+            if source['text'] and source['text'] not in summary_parts:
+                summary_parts.append(source['text'])
+
+        response['summary'] = '\n\n'.join(summary_parts)
+
+        # Add related topics as suggestions
+        related_sources = [s for s in results['sources'] if s['type'] == 'related']
+        response['suggestions'] = [{'text': s['text'], 'url': s['url']} for s in related_sources]
+
+        if response['summary']:
+            return jsonify(response), 200
+        return jsonify({'error': 'no_results', 'suggestions': response['suggestions']}), 200
+
+    # Run Flask in a daemon thread so Streamlit can continue serving
+    def run():
+        try:
+            # bind to localhost on port 8502 by default
+            app.run(host='127.0.0.1', port=8502, debug=False, use_reloader=False)
+        except Exception as e:
+            print(f"Flask API Error: {str(e)}")
+
+    # Add CORS headers
+    @app.after_request
+    def after_request(response):
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,POST')
+        return response
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+
+# Start the local API server in background (it's okay if OPENAI_API_KEY is missing; frontend will fallback)
+try:
+    start_local_api_server()
+except Exception:
+    # non-fatal; continue without a local API
+    pass
